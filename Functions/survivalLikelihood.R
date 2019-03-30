@@ -60,7 +60,6 @@ survLikelihood<- function(Y, p, ID){
   grp<- group_by(df.tmp, ID, Y) # set up the grouping
   
   use.dplyr<-summarise(grp,  "term"= prod(P.tmp)) #set up aggregation by groups  
-  #use.dplyr<-arrange(use.dplyr, ID,Y) # order the data
   use.dplyr<-collect(use.dplyr)
   use.dplyr$term[use.dplyr$Y==1] = 1 - use.dplyr$term[use.dplyr$Y==1]
   
@@ -108,17 +107,89 @@ updatePropAdaptive<- function(covBeta, acceptRate, iters,mult=1, adjust=(-0.3), 
 library(tmvtnorm)
 
 #### prediction 
-predict.Survival<- function(betaSamp, alphaSamp, bigX.pred, tRow=newtRow){ #### alpha.type controls which type to do, {'Different', 'Same', 'One', 'Zero'}
+plotSurvivalFit<- function(speciesFitList, nsim=100){
+  print('Plotting posterior distribution simulated predictions, this may take a few minutes...')
+  tmp.fit<- speciesFitList
+  ng<- nrow(tmp.fit$Beta)
+  N<- nrow(tmp.fit$survMat)
+  
+  individualMaxCensus<- tmp.fit$maxCensusTime
+  
+  npred<- nsim
+  holdPred<- matrix(NA, nrow=N, ncol=npred)
+  par(mfrow=c(1,1))
+  for(S in 1:npred){  
+    beta.samp<- tmp.fit$Beta[sample(round((3*ng/4)):ng,1),]
+    alpha.samp<- tmp.fit$alpha[sample(round((3*ng/4)):ng,1),]
+    dL.predict<- predict.Survival(as.vector(beta.samp), c(alpha.samp), bigX.pred=tmp.fit$X,tRow=tmp.fit$maxCensusTime) # returns a matrix of daily probabilites
+    
+    tmp.p = t(apply(dL.predict,1,cumprod)) #Translate survival to cumulative survival
+    
+    rand = runif(N)
+    for(t in 1:length(rand)){
+      tmpD= which(tmp.p[t,1:individualMaxCensus[t]] <= rand[t])[1]
+      if(is.na(tmpD))tmpD=NA
+      holdPred[t,S] = tmpD
+    }
+  }
+  actT<- calcActualSurvival(tmp.fit$survMat)
+  
+  t1<- actT[,2]
+  t2<- actT[,3]
+  maxTime<- tmp.fit$maxCensusTime[which(is.na(t1))]
+  d<- is.na(t1) # did not die, so !d is death
+  t1[is.na(t1)]<- maxTime
+  t2[is.na(t2)]<- maxTime
+  
+  test1<- my.KM(t1, !d)
+  test2<- my.KM(t2, !d)
+  
+  holdKM<- matrix(NA, nrow=ncol(holdPred), ncol=max(tmp.fit$maxCensusTime))
+  for(j in 1:ncol(holdPred)){
+    pp<- holdPred[,j]
+    d.tmp<- is.na(pp)
+    pp[is.na(pp)]<- tmp.fit$maxCensusTime[is.na(pp)]
+    tmp.km<- my.KM(pp, !d.tmp)
+    holdKM[j,1:length(tmp.km)]<- tmp.km
+    if(length(tmp.km)<max(tmp.fit$maxCensusTime)){
+      tmp.max<- length(tmp.km)
+      holdKM[j,(tmp.max+1):max(tmp.fit$maxCensusTime)]<- holdKM[j,tmp.max]
+    }
+  }
+  quant.KM<- apply(holdKM,2,quantile,c(0.025,0.5,0.975))
+  
+  
+  plot(1:length(test1), test1,type='l', ylim=range(quant.KM),xlab='Days since germination',ylab='Proportion surviving individuals',cex.axis=1.4,cex.lab=1.3)
+  lines(1:length(test2), test2)
+  
+  plotConfidenceRegion(1:ncol(holdKM), quant.KM[1,], quant.KM[3,],col.border='grey38')
+  lines(quant.KM[2,],col='grey45',lty=1,lwd=4)
+  lines(1:length(test1), test1,lwd=3)
+  lines(1:length(test2), test2,lwd=3)
+  legend('bottomleft', c('"Observed" cumulative survival', 'Median predicted', '95% Prediction Interval'), col=c(1,'grey45','grey'), lwd=3)
+  abline(v= which(colSums(survMat != (0))  > round(0.90 * nrow(survMat)) )[1], col='red',lty=3,lwd=2)
+  
+  return(quant.KM)
+}
+
+predict.Survival<- function(betaSamp, alphaSamp, bigX.pred, tRow=newtRow, X.chronic=c(2,3,4), X.acute=c(1,5,6)){ #### alpha.type controls which type to do, {'Different', 'Same', 'One', 'Zero'}
+  
+  nt<- dim(bigX.pred)[3]
+  ni<- dim(bigX.pred)[2]
+  dL<- matrix(0, nrow=ni, ncol=nt)
+  dL.static<- matrix(0, nrow=ni, ncol=nt)
+  dL.acc<- array(0, dim=c(ni, nt, length(X.chronic)))
+  
   if(alpha.type=='Different'){ 
     for(j in 1:nt){
-      dL.static[,j]<-  t(bigX.pred[X.static,,j])%*%c(betaSamp[X.static])
-      for(h in 1:length(X.acc)){
-        dL.acc[,j,h]<- bigX.pred[X.acc[h],,j] * betaSamp[X.acc][h]
+      dL.static[,j]<-  t(bigX.pred[X.acute,,j])%*%c(betaSamp[X.acute])
+      for(h in 1:length(X.chronic)){
+        dL.acc[,j,h]<- bigX.pred[X.chronic[h],,j] * betaSamp[X.chronic][h]
       }
     }
     dL<- dL.static
-    for(h in 1:length(X.acc)){
-      dL<- dL + cppRowCumsumNew(dL.acc[,,h], tRow, alphaSamp[h])
+    for(h in 1:length(X.chronic)){
+      dL<- dL + cppWeightedRowSums(dL.acc[,,h], tRow, alphaSamp[h])
     }
     dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
   }
@@ -131,6 +202,44 @@ predict.Survival<- function(betaSamp, alphaSamp, bigX.pred, tRow=newtRow){ #### 
   }
   
   return(dL2)
+}
+
+plotConfidenceRegion<- function(x, ylo, yhi,col.reg='grey',col.border='black',alpha=1){
+  xx<- c(x,rev(x))
+  yy<- c(ylo, rev(yhi))
+  col.plot<- t(col2rgb(col.reg) )
+  col.plot<- rgb(col.plot,alpha=alpha*255 ,maxColorValue=255)
+  polygon(xx, yy, col=col.plot, border=col.border)
+}
+
+
+# Given a survival matrix, return the KM estimates
+calcActualSurvival<- function(allIndividuals){
+  N<- nrow(allIndividuals)
+  individualList<- list()
+  for( i in 1:N){
+    individualList[[i]]<- allIndividuals[i,][allIndividuals[i,]!=(-1)] 
+  }
+  act.surv<- matrix(NA, nrow=N,ncol=3)
+  for(i in 1:N){
+    tt<- 1:length(individualList[[i]])
+    act.surv[i,1]<- median(tt[individualList[[i]] == 1],na.rm=T)
+    act.surv[i,2]<- min(tt[individualList[[i]] == 1],na.rm=T)
+    act.surv[i,3]<- max(tt[individualList[[i]] == 1],na.rm=T)
+  }
+  act.surv[abs(act.surv)==Inf]<- NA
+  return(act.surv)
+}
+
+my.KM<- function(x,d){
+  tmax<- max(x,na.rm=T)
+  surv.tmp<- rep(1, tmax)
+  for(i in 2:tmax){
+    ni<- length(x[x>=i])
+    di<- sum(d[x==i])
+    surv.tmp[i]<- (ni - di)/ni
+  }
+  return(cumprod(surv.tmp))
 }
 
 ####
@@ -252,7 +361,7 @@ conditionalMVN <- function(xx, mu, sigma, cindex){
 }
 
 # Function to simulate survival given a covariate array x and a number of parameters
-simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NULL,alpha.type='Different',X.acc=c(2,3,4),X.static=c(1,5), census=TRUE,average.census.interval=7){
+simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NULL,alpha.type='Different',X.chronic=c(2,3,4),X.acute=c(1,5), census=TRUE,average.census.interval=7){
   yrs<- dim(x)[2]
   groups=yrs
   censusTimes<- list()
@@ -278,17 +387,17 @@ simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NU
       alpha<- c(.8, .4, .1)
     }
     dL<- dL.static <- matrix(0, nrow=dim(x)[2], ncol=max(tmax))
-    dL.acc2<-dL.acc <- array(0, dim=c(nrow(dL), ncol(dL), length(X.acc)))
+    dL.acc2<-dL.acc <- array(0, dim=c(nrow(dL), ncol(dL), length(X.chronic)))
     
     #List Xstatic, List Xacc, NumericVector Bstatic, NumericVector Bacc, int N, int NT, double alpha
     for(j in 1:ncol(dL)){
-      dL.static[,j]<-  t(x[X.static,,j])%*%beta[X.static]
-      for(h in 1:length(X.acc)){
-        dL.acc[,j,h]<- t(x[X.acc[h],,j]) * beta[X.acc][h]
+      dL.static[,j]<-  t(x[X.acute,,j])%*%beta[X.acute]
+      for(h in 1:length(X.chronic)){
+        dL.acc[,j,h]<- t(x[X.chronic[h],,j]) * beta[X.chronic][h]
       }
     }
     dL<- dL.static
-    for(h in 1:length(X.acc)){
+    for(h in 1:length(X.chronic)){
       dL<- dL + cppWeightedRowSums(dL.acc[,,h], max(tmax), alpha[h])
     }
     dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
@@ -461,7 +570,6 @@ initializeFit<- function(survivalMatrix, X, iterations=1000, progressBar = T, X.
     newLik <-  lpnew + survLik 
     
     
-    
     if((newLik - likVector[n]) > log(runif(1))){
       Beta[n+1,] = propBeta
       likVector[n+1] = newLik
@@ -532,7 +640,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   BetaBurn<- initialFit$Beta[ng.old,]
   likVector.old<- initialFit$likVector
   Beta<- matrix(NA, nrow=ng, ncol=ncol(initialFit$Beta))
-  Beta[1,]<- BetaBurn#apply(BetaBurn[floor(3*ng.old/4):ng.old,],2,median)
+  Beta[1,]<- BetaBurn
   colnames(Beta)<- colnames(initialFit$Beta)
   covb<- initialFit$covarianceBeta
   alpha<- matrix(0.0001,nrow=ng,ncol=ncol(initialFit$alpha))
@@ -620,7 +728,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
     
     dL<- dL.static
     for(h in 1:length(X.chronic)){
-      dL<- dL + cppRowCumsumNew(dL.acc[,,h], tRow, propAlpha[h])
+      dL<- dL + cppWeightedRowSums(dL.acc[,,h], tRow, propAlpha[h])
     }
     dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
     dL2[,1]<- 1 # always survival on the first day of observationl
@@ -663,5 +771,86 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   DIC2<- pd + dBar
   
   tmpFit<- list(Beta=Beta, Alpha=alpha, ng=ng, likVector=likVector, covb=covb, cova=cova, dic1=DIC, dic2=DIC2)
-  
+  return(tmpFit)
 }
+
+partitionSurvivalEffectsP.Abs<- function(X, Beta, alpha, maxRecensus, npred = 1000, up.to.day = NULL,
+                                         X.acute=c(1,5,6), X.chronic=c(2,3,4)){ #based on mortality-weighted effects instead of predicted
+  N<- length(maxRecensus)
+  nt<- max(maxRecensus)
+  chronic.Contribution<- NULL
+  chronic.odds<- NULL
+  holdDiffs<- NULL
+  dL.static<- matrix(0, nrow= dim(X)[2], ncol=dim(X)[3])
+  dL.acc<- array(0, dim = c(dim(X)[2], dim(X)[3],ncol(alpha)))
+  holdOdds<- rep(NA, npred)
+  mysamp<- sample(round(nrow(Beta) / 2) : nrow(Beta), npred)
+  for(n in 1:npred){
+    betaSamp<- Beta[mysamp[n],]
+    alphaSamp<- alpha[mysamp[n],]
+    for(j in 1:nt){
+      dL.static[,j]<-  t(X[X.acute,,j])%*%c(betaSamp[X.acute])
+      for(h in 1:length(X.chronic)){
+        dL.acc[,j,h]<- X[X.chronic[h],,j] * betaSamp[X.chronic][h]
+      }
+    }
+    dL<- dL.static
+    
+    dL.Today<- dL.static
+    for(h in 1:length(X.chronic)){
+      dL.Today<- dL.Today + dL.acc[,,h] 
+    }
+    
+    
+    for(h in 1:length(X.chronic)){
+      dL<- dL + cppWeightedRowSums(dL.acc[,,h], maxRecensus, alphaSamp[h])
+    }
+    dL.All<- dL
+    dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
+    dL2.static<- 1 - (1 - exp(dL.static))
+    dL2.Today<- 1 - ( 1-exp(-exp(dL.Today)))
+    
+    p.All<- 1 - dL2
+    p.Today<- 1 - dL2.Today
+    up.to.day<- min(c(up.to.day, max(maxRecensus) -1))
+    if(!is.null(up.to.day)){
+      p.All[,(up.to.day+1):ncol(p.All)]<- NA
+      p.Today[,(up.to.day+1):ncol(p.Today)]<- NA
+    }
+    for(i in 1:nrow(p.All)){
+      if(maxRecensus[i]<ncol(p.All)){
+        p.All[i,(maxRecensus[i]+1):ncol(p.All)]<- NA
+        p.Today[i,(maxRecensus[i]+1):ncol(p.Today)]<- NA
+      }
+    }
+    chronic.odds<- (p.All / (1 - p.All)) / (p.Today / (1 - p.Today))
+    
+    hio<- NULL
+    for(i in 1:nrow(chronic.odds)){
+      hio[i]<- mean(abs(log(chronic.odds[i,1:maxRecensus[i]])))
+      if(maxRecensus[i]<ncol(chronic.odds)){
+        chronic.odds[i,(maxRecensus[i]+1):ncol(chronic.odds)]<- NA
+      }
+    }
+    holdOdds[n]<- mean(hio,na.rm=T)
+    
+    allDiffs<- apply(abs(p.Today - p.All), 1, mean,na.rm=T)
+    
+    holdDiffs<- rbind(holdDiffs, cbind(n,1:nrow(p.Today),allDiffs) )
+  }
+  
+  holdDiffMeans<- aggregate(holdDiffs[,3],by=list(holdDiffs[,1]),mean)
+  
+  tmp<- list('hio'=hio,'pAll'=p.All, 'pToday'= p.Today,'averageOddsIncrease' = holdOdds,'medianOddsIncrease' = median(abs(1-log(chronic.odds))),'tmax'=maxRecensus, 'oddsTimeSeries'=abs(log(chronic.odds)), 'oddsTimeSeriesLog'=(log(chronic.odds)), "holdDiffs" = holdDiffs, 'diffMeans' = holdDiffMeans)
+  
+  hab.prodT<- t(apply((1-tmp$pToday),1,cumprod) )
+  hab.prodA<- t(apply(1-tmp$pAll,1, cumprod) )
+  
+  partition<- list(allDiffs = abs(tmp$pToday - tmp$pAll)[!is.na(abs(tmp$pToday - tmp$pAll))], survivalDiff=apply(abs(diff(hab.prodA - hab.prodT)), 1, max,na.rm=T), 
+                   absolutelyMortalityDiffMean=apply(abs(tmp$pToday - tmp$pAll), 1, mean,na.rm=T), absolutelyMortalityDiffSD=sd(tmp$diffMeans[,2]),
+                   cumulativeToday = hab.prodT, cumulativeAll = hab.prodA)
+  
+  
+  return(partition)
+}
+

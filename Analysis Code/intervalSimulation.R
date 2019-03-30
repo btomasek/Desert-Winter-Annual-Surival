@@ -28,9 +28,10 @@ simList$maxT[3] # 226 is the maximum time for row 3
 
 set.seed(101)
 sim.census=TRUE ### do you want to simulate with interval censoring, if set to false will return ONLY daily survival matrix
+
 survSim<- simulateSurvival(x=simList$simX,tmax=simList$maxT, n.per.group = n.per.group, 
                            census=sim.census, alpha.type='Different', beta=BetaSim, 
-                           alpha=AlphaSim, X.acc=c(2,3,4), X.static=c(1,5,6), 
+                           alpha=AlphaSim, X.chronic=c(2,3,4), X.acute=c(1,5,6), 
                            average.census.interval = simInterval)
 
 #survSim is a list with 2 objects. The first is the interval censored simulated data. the second object is the underlying daily survival that generated the interval data
@@ -48,11 +49,11 @@ Sys.time() - now
 tmpFit<- list(Beta=initial.fit$Beta, alpha=initial.fit$Alpha, covarianceBeta = initial.fit$covarianceBeta, likVector=initial.fit$likVector, ng = nrow(initial.fit$Beta))
 save(tmpFit, file=paste0('Sim_InitialFit.rdata'))
 
-chronicFit<- chronicSurvivalFit(tmpFit, survSim, simList$simX, 1000) #Approximately 1 second per iteration. Recommend >20-100k iterations on real data, as convergence can take a while
+chronicFit<- chronicSurvivalFit(tmpFit, survSim, simList$simX, 10000) #Approximately 1 second per iteration. Recommend >20-100k iterations on real data, as convergence can take a while
 
-finalFit<- list(Beta=initial.fit$Beta, alpha=initial.fit$Alpha, covb=initial.fit$covb, cova=initial.fit$cova, 
-                betasim=BetaSim,alphasim=initial.fit$Alpha, X=simList$simX, 
-                likVector=initial.fit$likVector, survMat=survSim, survTrue=survTrue)
+finalFit<- list(Beta=chronicFit$Beta, alpha=chronicFit$Alpha, covb=chronicFit$covb, cova=chronicFit$cova, 
+                betasim=BetaSim,alphasim=chronicFit$Alpha, X=simList$simX, 
+                likVector=chronicFit$likVector, survMat=survSim, survTrue=survTrue)
 
 save(finalFit, file=paste0('Sim_FinalFit.rdata'))
 
