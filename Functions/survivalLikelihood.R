@@ -476,6 +476,7 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
                          beta_starting=NULL, #can start chain at specific beta values
                          alpha_starting=NULL, # can start chain at specific alpha values, won't be used here
                          Xnames=seq(1, dim(X)[1])){
+  
   run.chronic<- Xnames[X.chronic]
   ng<- iterations
   updatecov<- ng/100
@@ -514,7 +515,7 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
   rmsurvmat<- rmsurvSim <- rmsurvSim[reorder,]
   covb =  diag(ncol(Beta))*1E-5
 
-  alphastep <- rep(.001,length(run.chronic))
+  alphastep <- rep(.001,length(X.chronic))
   alpha <- matrix(0.01,nrow=ng,ncol=length(X.chronic))
   colnames(alpha)<- run.chronic
   cova<- diag(ncol(alpha)) * 0.0001
@@ -626,7 +627,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   rmsurvmat<- rmsurvSim <- rmsurvSim[reorder,]
   covb =  diag(ncol(Beta))*1E-5
   
-  alphastep = rep(.001,length(run.chronic))
+  alphastep = rep(.001,length(X.chronic))
   alpha = matrix(0.01,nrow=ng,ncol=length(X.chronic))
   colnames(alpha)<- run.chronic
   cova<- diag(ncol(alpha)) * 0.0001

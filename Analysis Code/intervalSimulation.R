@@ -44,13 +44,16 @@ survSim<- survivalSimulation[[1]]
 N<- nrow(survSim)
 
 now = Sys.time()
-initial.fit <- initializeFit(survivalMatrix = survSim, X = survivalSimulation$sim.X, iterations = 300) # Recommend doing at least 5k iterations on real data, where the initialization of Beta is unknown
+initial.fit <- initializeFit(survivalMatrix = survSim, X = survivalSimulation$sim.X, iterations = 1000) # Recommend doing at least 5k iterations on real data, where the initialization of Beta is unknown
 Sys.time() - now
 
 tmpFit<- list(Beta=initial.fit$Beta, Alpha=initial.fit$Alpha, covarianceBeta = initial.fit$covarianceBeta, likVector=initial.fit$likVector, ng = nrow(initial.fit$Beta))
 save(tmpFit, file=paste0('Sim_InitialFit.rdata'))
 
-chronicFit<- chronicSurvivalFit(tmpFit, survSim, simList$simX, 300) #Approximately 1 second per iteration. Recommend >20-100k iterations on real data, as convergence can take a while
+chronicFit<- chronicSurvivalFit(initialFit=tmpFit, 
+                                survivalMatrix=survSim, 
+                                X=simList$simX, 
+                                iterations=1000) #Recommend >20-100k iterations on real data, as convergence can take a while
 
 finalFit<- list(Beta=chronicFit$Beta, Alpha=chronicFit$Alpha, 
                 covarianceBeta=chronicFit$covb, covarianceAlpha=chronicFit$cova, # Proposition covariances
