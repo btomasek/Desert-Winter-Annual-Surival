@@ -32,22 +32,26 @@ hab = tmp.fit$X[5,,1] # The 5th index is habitat (binary factor), we can figure 
 # need to specify the indices that match the chronic versus acute effects,
 # Note that unobserved weather time series can be accomodated by changing X and maxRecensus
 # Because algorithm relies on draws from posterior distribution, may have slightly different results from run to run
-lightPartition<-  partitionSurvivalEffectsP.Abs(X = X[,hab==1,], Beta, alpha, maxRecensus  = maxCensus[hab==1], npred=1,up.to.day=100,
+lightHabitat-  partitionSurvivalEffectsP.Abs(X = X[,hab==1,], Beta, alpha, 
+                                                maxRecensus  = maxCensus[hab==1], 
+                                                npred=100, up.to.day=100,
                                              X.chronic=c(2,3,4), X.acute=c(1,5,6))
 
-shrubPartition<- partitionSurvivalEffectsP.Abs(X = X[,hab==0,], Beta, alpha, maxRecensus = maxCensus[hab==0], npred=100,up.to.day=100,
+shrubHabitat<- partitionSurvivalEffectsP.Abs(X = X[,hab==0,], Beta, alpha, 
+                                               maxRecensus = maxCensus[hab==0], 
+                                               npred=100, up.to.day=100,
                                               X.chronic=c(2,3,4), X.acute=c(1,5,6))
 
 # Get summary values for the overall effects with or without chronic effects
-mean(lightPartition$absolutelyMortalityDiffMean)
-lightPartition$absolutelyMortalityDiffSD
+mean(lightHabitat$absolutelyMortalityDiffMean)
+lightHabitat$absolutelyMortalityDiffSD
 
-mean(shrubPartition$absolutelyMortalityDiffMean)
-shrubPartition$absolutelyMortalityDiffSD
+mean(shrubHabitat$absolutelyMortalityDiffMean)
+shrubHabitat$absolutelyMortalityDiffSD
 
 # Plot differences, one individual. Note that all individuals within a year will have the same curves
 plot.individual<- 100
 par(bty='n')
-plot(lightPartition$cumulativeToday[plot.individual,],type='l',col='blue',lwd=4,ylim=c(0,1),xlim=c(0,sum(!is.na(lightPartition$cumulativeToday[plot.individual,]))), ylab='Cumulative survival probability',xlab='Days since germination')
-lines(lightPartition$cumulativeAll[plot.individual,],type='l',col='red',lwd=4)
+plot(lightHabitat$cumulativeToday[plot.individual,],type='l',col='blue',lwd=4,ylim=c(0,1),xlim=c(0,sum(!is.na(lightPartition$cumulativeToday[plot.individual,]))), ylab='Cumulative survival probability',xlab='Days since germination')
+lines(lightHabitat$cumulativeAll[plot.individual,],type='l',col='red',lwd=4)
 legend('bottomleft', c('Acute only', 'Acute & chronic'), bty='n', col=c('blue','red'),lwd=4,cex=2)

@@ -2,17 +2,18 @@ library(Rcpp)
 library(bindrcpp)
 library(sandwich)
 library(gmm)
-source('Functions/survivalLikelihood.R')
-sourceCpp('Functions/cppWeightedRowSums.cpp')
 library(Matrix)
+
+source('Functions/survivalLikelihood.R')
 source('Functions/simSurvivalFunction.R')
+sourceCpp('Functions/cppWeightedRowSums.cpp')
 
 #As an example, use the coefficients estimated for EVMU
 BetaSim<- c(-4.98528049,  0.13378620, -0.15117765,  0.20951936 , 0.18524818, -0.02342517 )
-AlphaSim<- c(0.8666072, 0.9996096, 0.9530009 )
+AlphaSim<- c(0.8666072, 0.9996096, 0.9530009 ) # This species has 3 strong-chronic effects
 
 simInterval<- 14 #biweekly collection
-n.per.group<- 100 ## number of n per year observed
+n.per.group<- 100 ## number of individuals per year observed
 Xnames.All<- c('int','Tmax','SM','TxSM','hab', 'age')
 chronic.X<- c('Tmax','SM','TxSM')
 acute.X<- c('int','hab','int2')
@@ -29,31 +30,33 @@ simList$maxT[3] # 226 is the maximum time for row 3
 set.seed(101)
 sim.census=TRUE ### do you want to simulate with interval censoring, if set to false will return ONLY daily survival matrix
 
-survSim<- simulateSurvival(x=simList$simX,tmax=simList$maxT, n.per.group = n.per.group, 
+survivalSimulation<- simulateSurvival(x=simList$simX,tmax=simList$maxT, n.per.group = n.per.group, 
                            census=sim.census, alpha.type='Different', beta=BetaSim, 
                            alpha=AlphaSim, X.chronic=c(2,3,4), X.acute=c(1,5,6), 
                            average.census.interval = simInterval)
 
 #survSim is a list with 2 objects. The first is the interval censored simulated data. the second object is the underlying daily survival that generated the interval data
 
-survTrue<- survSim[[2]]
-survSim<- survSim[[1]]
+survTrue<- survivalSimulation[[2]]
+survSim<- survivalSimulation[[1]]
 
 #### now do a fit on the simulated data
 N<- nrow(survSim)
 
 now = Sys.time()
-initial.fit <- initializeFit(survSim, simList$simX, 2000) # Approximately 1/2 second per iteration. Recommend doing at least 5k iterations on real data, where the initialization of Beta is unknown
+initial.fit <- initializeFit(survivalMatrix = survSim, X = survivalSimulation$sim.X, iterations = 300) # Recommend doing at least 5k iterations on real data, where the initialization of Beta is unknown
 Sys.time() - now
 
-tmpFit<- list(Beta=initial.fit$Beta, alpha=initial.fit$Alpha, covarianceBeta = initial.fit$covarianceBeta, likVector=initial.fit$likVector, ng = nrow(initial.fit$Beta))
+tmpFit<- list(Beta=initial.fit$Beta, Alpha=initial.fit$Alpha, covarianceBeta = initial.fit$covarianceBeta, likVector=initial.fit$likVector, ng = nrow(initial.fit$Beta))
 save(tmpFit, file=paste0('Sim_InitialFit.rdata'))
 
-chronicFit<- chronicSurvivalFit(tmpFit, survSim, simList$simX, 10000) #Approximately 1 second per iteration. Recommend >20-100k iterations on real data, as convergence can take a while
+chronicFit<- chronicSurvivalFit(tmpFit, survSim, simList$simX, 300) #Approximately 1 second per iteration. Recommend >20-100k iterations on real data, as convergence can take a while
 
-finalFit<- list(Beta=chronicFit$Beta, alpha=chronicFit$Alpha, covb=chronicFit$covb, cova=chronicFit$cova, 
-                betasim=BetaSim,alphasim=chronicFit$Alpha, X=simList$simX, 
-                likVector=chronicFit$likVector, survMat=survSim, survTrue=survTrue)
+finalFit<- list(Beta=chronicFit$Beta, Alpha=chronicFit$Alpha, 
+                covarianceBeta=chronicFit$covb, covarianceAlpha=chronicFit$cova, # Proposition covariances
+                BetaSim=BetaSim, AlphaSim=AlphaSim, X=simList$simX, # true values used in simulation
+                likVector=chronicFit$likVector, 
+                survMat=survSim, survTrue=survTrue) # These two matrices have the interval censored and true daily survival simulation
 
 save(finalFit, file=paste0('Sim_FinalFit.rdata'))
 

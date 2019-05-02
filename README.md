@@ -8,6 +8,6 @@ This repository is for archiving code used for survival data analysis of Sonoran
 
 3. Allow for the partitioning of the effects of predictor variables on survival coming from acute (single day) versus chronic (multiple days) conditions. Chronic conditions effect survival through an autoregressive structure in the model, i.e. AR(1). 
 
-The underlying dependent variable (or target variable) for this analysis is binary. This binary condition is assessed discrete time point which may lead to interval censoring. Predictor variables can categorical or continuous and may be measured at a higher frequency than the dependent variable.
+The underlying dependent variable for this analysis is binary. This binary condition is assessed at discrete time points which may lead to interval censoring. Predictor variables can categorical or continuous and may be measured at a higher frequency than the dependent variable.
 
-Within subfolders, there is data and example code of how to use the custom functions to replicate the analysis and visualizations. We are continuing to improve the efficiency and user-friendliness of the code to facilitate reusability for other analyses of similar survival data.
+Within subfolders, there is data and example code of how to use custom functions can replicate the analysis and visualizations. We are continuing to improve the efficiency and user-friendliness of the code.
