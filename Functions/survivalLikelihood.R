@@ -485,7 +485,7 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
   
   ww <- which(!(survivalMatrix == (-1)), arr.ind=T)
   dL <- matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
-  dL.static <- dL.acc = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
+  dL.static <- dL.acc <- matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   
   IDall <- NULL
   for(i in 1:N){
@@ -521,7 +521,7 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
   cova<- diag(ncol(alpha)) * 0.0001
   dL.acc<- dL.acc2
   
-  if(!is.null(alphasim))alpha[1,]<- alphasim
+  if(!is.null(alpha_starting))alpha[1,]<- alpha_starting
   aliveT<- function(X)return(length(X[X!=(-1)]))
   tRow <- apply(survivalMatrix, 1, aliveT)
   likVector <- rep(-Inf, ng)
