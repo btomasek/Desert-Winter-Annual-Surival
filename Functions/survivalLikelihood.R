@@ -471,71 +471,74 @@ covariateArray<- function(path_to_covariate_data, covar_list=c('int','tmax','sm'
 # Function for setting up fitting structures
 
 # Set up for fitting data, and running through without alpha parameter
-initializeFit<- function(survivalMatrix, X, iterations=1000, progressBar = T, X.chronic = c(2,3,4), X.acute=c(1,5,6), betasim=NULL, alphasim=NULL, Xnames=seq(1, dim(X)[1])){
+initializeFit<- function(survivalMatrix, X, iterations=1000, 
+                         progressBar = T, X.chronic = c(2,3,4), X.acute=c(1,5,6), 
+                         beta_starting=NULL, #can start chain at specific beta values
+                         alpha_starting=NULL, # can start chain at specific alpha values, won't be used here
+                         Xnames=seq(1, dim(X)[1])){
+  
   run.chronic<- Xnames[X.chronic]
-  ng= iterations
-  updatecov = ng/100
-  adapt.mult=0.1
-  adapt.adjust= (-0.7)
+  ng<- iterations
+  updatecov<- ng/100
+  adapt.mult<-0.1
+  adapt.adjust<- (-0.7)
   
-  ww = which(!(survivalMatrix == (-1)), arr.ind=T)
-  dL = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
-  dL.static = dL.acc = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
+  ww <- which(!(survivalMatrix == (-1)), arr.ind=T)
+  dL <- matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
+  dL.static <- dL.acc = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   
-  IDall = NULL
+  IDall <- NULL
   for(i in 1:N){
-    IDall = c(IDall, rep(i, sum(ww[,1]==i)))
+    IDall <- c(IDall, rep(i, sum(ww[,1]==i)))
   }
   
-  survivalMatrix2 = as.vector(t(survivalMatrix))
-  survivalMatrix2 = survivalMatrix2[survivalMatrix2!=(-1)]
+  survivalMatrix2 <- as.vector(t(survivalMatrix))
+  survivalMatrix2 <- survivalMatrix2[survivalMatrix2!=(-1)]
   
   YY<- survivalMatrix2
   
-  dL.acc2 = array(0, dim=c(nrow(survivalMatrix), ncol(survivalMatrix), length(X.chronic)))
-  bigX<- newbigX
+  dL.acc2 <- array(0, dim=c(nrow(survivalMatrix), ncol(survivalMatrix), length(X.chronic)))
   
-  dL = dL.static = dL.acc = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
+  dL <- dL.static <- dL.acc <- matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
 
-  Beta = matrix(0, nrow=ng,ncol=dim(bigX)[1])
-  Beta[1,1]<- -4
-  if(!is.null(betasim))Beta[1, ]<- betasim
+  Beta = matrix(0, nrow=ng,ncol=dim(X)[1])
+  Beta[1,1]<- -4 # starting value of beta with high survival probability
+  if(!is.null(beta_starting))Beta[1, ]<- beta_starting
   colnames(Beta)<- Xnames
-  p = ncol(Beta)
-  mu0 = rep(0, p)
-  S0 = 100 * diag(p)
-  nT = ncol(survivalMatrix)
-  likVector = rep(-Inf, ng)
-  rmsurvSim = which(!(survivalMatrix==(-1)),arr.ind=T)
-  reorder = order(rmsurvSim[,1] + (rmsurvSim[,2] /(max(rmsurvSim[,2])+1)))
+  p <- ncol(Beta)
+  mu0 <- rep(0, p)
+  S0 <- 100 * diag(p)
+  nT <- ncol(survivalMatrix)
+  likVector <- rep(-Inf, ng)
+  rmsurvSim <- which(!(survivalMatrix==(-1)),arr.ind=T)
+  reorder <- order(rmsurvSim[,1] + (rmsurvSim[,2] /(max(rmsurvSim[,2])+1)))
   rmsurvmat<- rmsurvSim <- rmsurvSim[reorder,]
   covb =  diag(ncol(Beta))*1E-5
 
-  alphastep = rep(.001,length(run.chronic))
-  alpha = matrix(0.01,nrow=ng,ncol=length(X.chronic))
+  alphastep <- rep(.001,length(X.chronic))
+  alpha <- matrix(0.01,nrow=ng,ncol=length(X.chronic))
   colnames(alpha)<- run.chronic
   cova<- diag(ncol(alpha)) * 0.0001
   dL.acc<- dL.acc2
   
   if(!is.null(alphasim))alpha[1,]<- alphasim
   aliveT<- function(X)return(length(X[X!=(-1)]))
-  tRow = apply(survivalMatrix, 1, aliveT)
-  likVector = rep(-Inf, ng)
+  tRow <- apply(survivalMatrix, 1, aliveT)
+  likVector <- rep(-Inf, ng)
   nt<- ncol(survivalMatrix)
   
-  now = Sys.time()
-  acceptance = 0
+  now <- Sys.time()
+  acceptance <- 0
   if(progressBar)pb=txtProgressBar(min = 0, max = 1, initial = 0, char = "=", width = NA, title, label, style = 3, file = "")
   
-  ### first fit, no alpha
-  updatecov = round(seq(ng/100, ng, length.out=100))
+  updatecov <- round(seq(ng/100, ng, length.out=100))
   ### first fit, no alpha
   for(n in 1:(ng-1)){
-    if(n %in% updatecov){
+    if(n %in% updatecov){ # Updating the proposition covariance for metropolis can be tricky, below tackles that in multiple ways
       if(n > (ng/10)){
-        covb = as.matrix(updatePropAdaptive(cov(Beta[round(n/2):n,]), acceptRate = length(unique(Beta[round(n/2):n,1])) / n,adjust=(-0.7), n ,adaptiveAdjust=T))
+        covb <- as.matrix(updatePropAdaptive(cov(Beta[round(n/2):n,]), acceptRate = length(unique(Beta[round(n/2):n,1])) / n,adjust=(-0.7), n ,adaptiveAdjust=T))
       }else{
-        covb = (2.38^2)/p*signif(cov(Beta[round(n/2):n,]),5)
+        covb <- (2.38^2)/p*signif(cov(Beta[round(n/2):n,]),5)
         if(sum(diag(covb)==0)>0){
           covb<- diag(p)*1E-8
         }
@@ -551,9 +554,9 @@ initializeFit<- function(survivalMatrix, X, iterations=1000, progressBar = T, X.
     lpnew<-dmvnorm(propBeta,mu0,S0,log=T)    # New Log Prior
     
     for(j in 1:nT){
-      dL.static[,j]<-  t(bigX[X.acute,,j])%*%propBeta[X.acute]
+      dL.static[,j]<-  t(X[X.acute,,j])%*%propBeta[X.acute]
       for(h in 1:length(X.chronic)){
-        dL.acc[,j,h]<- t(bigX[X.chronic[h],,j]) * propBeta[X.chronic][h]
+        dL.acc[,j,h]<- t(X[X.chronic[h],,j]) * propBeta[X.chronic][h]
       }
     }
     
@@ -565,24 +568,24 @@ initializeFit<- function(survivalMatrix, X, iterations=1000, progressBar = T, X.
     dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
     dL2[,1]<- 1 #### always survival on the first day of observation
     dL2 <-  dL2[rmsurvmat]
-    dL2[dL2==0]<- 1E-16
+    dL2[dL2==0]<- 1E-16 # Needed for algorithm stability in early iterations when still converging
     survLik <-  survLikelihood(Y = YY, p = dL2, ID = IDall)
     newLik <-  lpnew + survLik 
     
-    
+    # Accept or reject based on likelihood ratio (log scale)
     if((newLik - likVector[n]) > log(runif(1))){
-      Beta[n+1,] = propBeta
-      likVector[n+1] = newLik
+      Beta[n+1,] <- propBeta
+      likVector[n+1] <- newLik
       alpha[n+1,]<- alpha[n,]
-    }else{
-      Beta[n+1,] = Beta[n,]
-      likVector[n+1] = likVector[n]
+    }else{ # Reject
+      Beta[n+1,] <- Beta[n,]
+      likVector[n+1] <- likVector[n]
       alpha[n+1,]<- alpha[n,]
     }
     setTxtProgressBar(pb, n/ng)
   }
   
-  return(list('Beta'=Beta, 'Alpha'=alpha, 'likVector'=likVector, 'covarianceBeta'=covb))
+  return(list('Beta'=Beta, 'Alpha'=alpha, 'likVector'=likVector, 'covarianceBeta'=covb, 'ng'=ng))
 }
 
 chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, progressBar = T, X.chronic = c(2,3,4), X.acute=c(1,5,6), betasim=NULL, alphasim=NULL, Xnames=seq(1, dim(X)[1])){
@@ -607,11 +610,10 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   YY<- survivalMatrix2
   
   dL.acc2 = array(0, dim=c(nrow(survivalMatrix), ncol(survivalMatrix), length(X.chronic)))
-  bigX<- newbigX
   
   dL = dL.static = dL.acc = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   
-  Beta = matrix(0, nrow=ng,ncol=dim(bigX)[1])
+  Beta = matrix(0, nrow=ng,ncol=dim(X)[1])
   Beta[1,1]<- -4
   if(!is.null(betasim))Beta[1, ]<- betasim
   colnames(Beta)<- Xnames
@@ -625,7 +627,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   rmsurvmat<- rmsurvSim <- rmsurvSim[reorder,]
   covb =  diag(ncol(Beta))*1E-5
   
-  alphastep = rep(.001,length(run.chronic))
+  alphastep = rep(.001,length(X.chronic))
   alpha = matrix(0.01,nrow=ng,ncol=length(X.chronic))
   colnames(alpha)<- run.chronic
   cova<- diag(ncol(alpha)) * 0.0001
@@ -637,13 +639,14 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   likVector = rep(-Inf, ng)
   nt<- ncol(survivalMatrix)
   
+  ng.old<- initialFit$ng
   BetaBurn<- initialFit$Beta[ng.old,]
   likVector.old<- initialFit$likVector
   Beta<- matrix(NA, nrow=ng, ncol=ncol(initialFit$Beta))
   Beta[1,]<- BetaBurn
   colnames(Beta)<- colnames(initialFit$Beta)
   covb<- initialFit$covarianceBeta
-  alpha<- matrix(0.0001,nrow=ng,ncol=ncol(initialFit$alpha))
+  alpha<- matrix(0.0001,nrow=ng,ncol=ncol(initialFit$Alpha))
   cova<- diag(ncol(alpha)) * 0.0001
   colnames(alpha)<- run.chronic
   updatecov = round(seq(ng/1000, ng, length.out=1000))
@@ -671,9 +674,9 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
     lpnew<-dmvnorm(propBeta,mu0,S0,log=T)    # New Log Prior
     
     for(j in 1:nT){
-      dL.static[,j]<-  t(bigX[X.acute,,j])%*%propBeta[X.acute]
+      dL.static[,j]<-  t(X[X.acute,,j])%*%propBeta[X.acute]
       for(h in 1:length(X.chronic)){
-        dL.acc[,j,h]<- t(bigX[X.chronic[h],,j]) * propBeta[X.chronic][h]
+        dL.acc[,j,h]<- t(X[X.chronic[h],,j]) * propBeta[X.chronic][h]
       }
     }
     
@@ -720,9 +723,9 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
     lpnew<-lpold<-dmvnorm(Beta[n+1,],mu0,S0,log=T)    # Old Log Prior
     
     for(j in 1:nT){
-      dL.static[,j]<-  t(bigX[X.acute,,j])%*%propBeta[X.acute]
+      dL.static[,j]<-  t(X[X.acute,,j])%*%propBeta[X.acute]
       for(h in 1:length(X.chronic)){
-        dL.acc[,j,h]<- t(bigX[X.chronic[h],,j]) * propBeta[X.chronic][h]
+        dL.acc[,j,h]<- t(X[X.chronic[h],,j]) * propBeta[X.chronic][h]
       }
     }
     
@@ -752,9 +755,9 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   meanAlpha<- apply(alpha[round(n/2):n,],2,mean)
   
   for(j in 1:nt){
-    dL.static[,j] = t(bigX[X.acute,,j])%*%meanBeta[X.acute]
+    dL.static[,j] = t(X[X.acute,,j])%*%meanBeta[X.acute]
     for(h in 1:length(X.chronic)){
-      dL.acc[,j,h]<- t(bigX[X.chronic[h],,j]) * meanBeta[X.chronic][h]
+      dL.acc[,j,h]<- t(X[X.chronic[h],,j]) * meanBeta[X.chronic][h]
     }
   }
   dL<- dL.static
@@ -854,3 +857,72 @@ partitionSurvivalEffectsP.Abs<- function(X, Beta, alpha, maxRecensus, npred = 10
   return(partition)
 }
 
+formatData_Survival<- function(survData, censusDates, dt = 'daily', censusGroups = 'year', dateFormat='%m/%d/%Y'){
+  survGroup <- which(colnames(survData)==censusGroups)
+  censGroup <- which(colnames(censusDates)==censusGroups)
+  
+  if(length(survGroup) == 0 | length(censGroup) == 0){
+    return('Error: Grouping variable not in both dataframes')
+  }
+  
+  #groups.surv = unique(survData[,survGroup]) #extract unique groups in survival data
+  groups.surv = survData[,survGroup]
+  Ns = length(unique(groups.surv)) #number of unique groups in the survival data
+  groups.cens = censusDates[,censGroup] #extract grouping column from the census data
+  unique.groups <- unique(groups.cens) #the unique groupings in census data
+  unique.groups <- unique.groups[unique.groups %in% groups.surv]
+  Nc = length(unique.groups) # number of unique groups in the census data
+  same.length = (sum(unique.groups %in% unique(groups.surv)) & sum(unique(groups.surv) %in% unique.groups))  ### test if census data and survival data have same unique groups
+  
+  index = 1:nrow(survData)
+  plotData<- NULL ### will hold the location in the list and original row number
+  
+  newSurv<- list()
+  for(i in 1:Nc){
+    surv.tmp <- survData[groups.surv==unique.groups[i],] ### extract the survival data from the group(year) i
+    censdates.tmp <-  censusDates[groups.cens == unique.groups[i],] #extract census data for group i
+    index.tmp <- index[groups.surv==unique.groups[i]]      
+    
+    jd.census<- unique(julian(as.Date(censdates.tmp[,'date'], format=dateFormat))) ### extract julian days
+    jd.census<- jd.census[order(jd.census)]
+    jd.census<- jd.census[!is.na(jd.census)]
+    jd.germ <- julian(as.Date(surv.tmp[,'germ_date'], format=dateFormat))
+    jd.death <- julian(as.Date(surv.tmp[,'death_date'], format=dateFormat))
+    
+    jd.deathcensored <- as.vector(surv.tmp[,'death_date']) == "-" ### individuals we don't observe die
+    
+    rm.ind <- !(jd.germ == jd.death) ### individuals that were observed to die on the same day as germinate are removed
+    rm.ind[is.na(rm.ind)] = TRUE
+    jd.germ=jd.germ[rm.ind]
+    jd.death=jd.death[rm.ind]      
+    index.tmp = index.tmp[rm.ind]
+    
+    for(j in 1:length(jd.germ)){      
+      if(jd.deathcensored[j]==F){ ### if censored this code is different
+        t = jd.germ[j]:jd.death[j]
+        newSurv = append(newSurv, list())
+        survMat<- matrix(NA, nrow=length(t), ncol=2)
+        survMat[,1] =  t
+        survMat[,2] = rep(0, length(t))
+        t.death = which(jd.census == jd.death[j])
+        
+        start.death<- which(survMat[,1] == jd.census[t.death-1]) + 1 #### we observe death one day after the previous census
+        end.death <- which(survMat[,1] == jd.census[t.death]) #### census death was observed
+        
+        survMat[start.death:end.death,2] = 1 ### code death as 1 for an interval
+        t.ind <- nrow(survMat)
+        newSurv = append(newSurv, list(survMat))
+        plotData = rbind(plotData, cbind(index.tmp[j], min(survMat[,1]), max(survMat[,1]), t.ind))
+      }else{
+        t = jd.germ[j]:max(jd.census)
+        survMat = matrix(NA, nrow=length(t), ncol=2)
+        survMat[,1] = t ### this individual was observed to survive the whole period
+        survMat[,2] = 0
+        t.ind <- nrow(survMat)
+        newSurv = append(newSurv, list(survMat))
+        plotData = rbind(plotData, cbind(index.tmp[j], min(survMat[,1]), max(survMat[,1]), t.ind))
+      }
+    }
+  }
+  return(list(plotData, newSurv))
+}

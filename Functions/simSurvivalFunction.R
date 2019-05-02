@@ -11,7 +11,7 @@ covariateArray<- function(path_to_covariate_data, covar_list=c('int','tmax','sm'
   return(out_array)
 }
 
-simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NULL,alpha.type='Different',X.acc=c(2,3,4),X.static=c(1,5), census=TRUE,average.census.interval=7){
+simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NULL,alpha.type='Different',X.chronic=c(2,3,4),X.acute=c(1,5), census=TRUE,average.census.interval=7){
   yrs<- dim(x)[2]
   groups=yrs
   censusTimes<- list()
@@ -36,20 +36,20 @@ simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NU
     if(is.null(alpha)){
       alpha<- c(.8, .4, .1)
     }
-    # X.static<- c(1,5)
-    #  X.acc<- c(2,3,4)
+    # X.acute<- c(1,5)
+    #  X.chronic<- c(2,3,4)
     dL<- dL.static <- matrix(0, nrow=dim(x)[2], ncol=max(tmax))
-    dL.acc2<-dL.acc <- array(0, dim=c(nrow(dL), ncol(dL), length(X.acc)))
+    dL.acc2<-dL.acc <- array(0, dim=c(nrow(dL), ncol(dL), length(X.chronic)))
     
     #List Xstatic, List Xacc, NumericVector Bstatic, NumericVector Bacc, int N, int NT, double alpha
     for(j in 1:ncol(dL)){
-      dL.static[,j]<-  t(x[X.static,,j])%*%beta[X.static]
-      for(h in 1:length(X.acc)){
-        dL.acc[,j,h]<- t(x[X.acc[h],,j]) * beta[X.acc][h]
+      dL.static[,j]<-  t(x[X.acute,,j])%*%beta[X.acute]
+      for(h in 1:length(X.chronic)){
+        dL.acc[,j,h]<- t(x[X.chronic[h],,j]) * beta[X.chronic][h]
       }
     }
     dL<- dL.static
-    for(h in 1:length(X.acc)){
+    for(h in 1:length(X.chronic)){
       dL<- dL + cppWeightedRowSums(dL.acc[,,h], max(tmax), alpha[h])
     }
     dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
@@ -102,6 +102,16 @@ simulateSurvival<- function(x=NULL,tmax=150,n.per.group = 50, beta=NULL,alpha=NU
   }
   
   sim.Individuals[,1]<- 0 
-  allSim<- list(sim.Censored=sim.Individuals, sim.Daily=sim.Daily)
+  
+  N<- nrow(sim.Individuals)
+  # Output the Array of Predictors
+  Xarray<- array(NA, dim=c(dim(x)[1], N, dim(x)[3]))
+  ind.group<- rep(1:(dim(simList$simX)[2]), each=n.per.group)
+  for(i in 1:N){
+    Xarray[,i,]<- simList$simX[,ind.group[i],]
+  }
+  
+  
+  allSim<- list(sim.Censored=sim.Individuals, sim.Daily=sim.Daily, sim.X=Xarray)
   return(allSim) 
 }
