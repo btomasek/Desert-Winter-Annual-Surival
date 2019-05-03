@@ -1,5 +1,8 @@
 library(mvtnorm)
 library(truncnorm)
+library(tmvtnorm)
+library(dplyr)
+library(Matrix)
 
 extractProbability<- function(survData, X,Beta, i){
   N = length(survData)
@@ -54,7 +57,6 @@ prodInv<- function(X){
   prod(1 - X) 
 }
 
-library(dplyr)
 survLikelihood<- function(Y, p, ID){
   df.tmp = data.frame('P.tmp'=p, "Y" = Y, "ID"=ID)
   grp<- group_by(df.tmp, ID, Y) # set up the grouping
@@ -76,7 +78,6 @@ blank.names <- function(dat){
 }
 
 
-library(Matrix)
 updatePropAdaptive<- function(covBeta, acceptRate, iters,mult=1, adjust=(-0.3), adaptiveAdjust=T,nearestPD=T){
   tiny = 1E-8
   p= ncol(covBeta)
@@ -104,7 +105,6 @@ updatePropAdaptive<- function(covBeta, acceptRate, iters,mult=1, adjust=(-0.3), 
   }
   return(cb)
 }
-library(tmvtnorm)
 
 #### prediction 
 plotSurvivalFit<- function(speciesFitList, nsim=100){
@@ -487,10 +487,11 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
   dL <- matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   dL.static <- dL.acc <- matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   
-  IDall <- NULL
+  IDall <- list()
   for(i in 1:N){
-    IDall <- c(IDall, rep(i, sum(ww[,1]==i)))
+    IDall[[i]] <- rep(i, sum(ww[,1]==i))
   }
+  IDall<- do.call(c, IDall)
   
   survivalMatrix2 <- as.vector(t(survivalMatrix))
   survivalMatrix2 <- survivalMatrix2[survivalMatrix2!=(-1)]
@@ -538,7 +539,9 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
       if(n > (ng/10)){
         covb <- as.matrix(updatePropAdaptive(cov(Beta[round(n/2):n,]), acceptRate = length(unique(Beta[round(n/2):n,1])) / n,adjust=(-0.7), n ,adaptiveAdjust=T))
       }else{
-        covb <- (2.38^2)/p*signif(cov(Beta[round(n/2):n,]),5)
+        if(n > 20){
+          covb <- (2.38^2)/p*cov(Beta[round(n/2):n,])
+        }
         if(sum(diag(covb)==0)>0){
           covb<- diag(p)*1E-8
         }
@@ -565,9 +568,10 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
     for(h in 1:length(X.chronic)){
       dL<- dL + dL.acc[,,h]	
     }
-    dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
-    dL2[,1]<- 1 #### always survival on the first day of observation
+    dL2 <- dL
+    dL2[,1] <- -Inf #### always survival on the first day of observation
     dL2 <-  dL2[rmsurvmat]
+    dL2<- 1 - ( 1-exp(-exp(dL2)))
     dL2[dL2==0]<- 1E-16 # Needed for algorithm stability in early iterations when still converging
     survLik <-  survLikelihood(Y = YY, p = dL2, ID = IDall)
     newLik <-  lpnew + survLik 
@@ -599,10 +603,11 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   dL = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   dL.static = dL.acc = matrix(0, nrow=nrow(survivalMatrix), ncol=ncol(survivalMatrix))
   
-  IDall = NULL
+  IDall <- list()
   for(i in 1:N){
-    IDall = c(IDall, rep(i, sum(ww[,1]==i)))
+    IDall[[i]] <- rep(i, sum(ww[,1]==i))
   }
+  IDall<- do.call(c, IDall)
   
   survivalMatrix2 = as.vector(t(survivalMatrix))
   survivalMatrix2 = survivalMatrix2[survivalMatrix2!=(-1)]
@@ -684,10 +689,11 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
     for(h in 1:length(X.chronic)){
       dL<- dL + cppWeightedRowSums(dL.acc[,,h], tRow, propAlpha[h])
     }
-    dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
-    dL2[,1]<- 1 #### always survival on the first day of observation
+    dL2 <- dL
+    dL2[,1] <- -Inf #### always survival on the first day of observation
     dL2 <-  dL2[rmsurvmat]
-    dL2[dL2==0]<- 1E-16
+    dL2<- 1 - ( 1-exp(-exp(dL2)))
+    dL2[dL2==0]<- 1E-16 # Needed for algorithm stability in early iterations when still converging
     survLik <-  survLikelihood(Y = YY, p = dL2, ID = IDall)
     newLik <-  lpnew + survLik 
     
@@ -733,10 +739,11 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
     for(h in 1:length(X.chronic)){
       dL<- dL + cppWeightedRowSums(dL.acc[,,h], tRow, propAlpha[h])
     }
-    dL2 <-   1 - ( 1-exp(-exp(dL)))  # survival prob
-    dL2[,1]<- 1 # always survival on the first day of observationl
-    dL2[dL2==0]<- 1E-16
+    dL2 <- dL
+    dL2[,1] <- -Inf #### always survival on the first day of observation
     dL2 <-  dL2[rmsurvmat]
+    dL2<- 1 - ( 1-exp(-exp(dL2)))
+    dL2[dL2==0]<- 1E-16 # Needed for algorithm stability in early iterations when still converging
     survLik <-  survLikelihood(Y = YY, p = dL2, ID = IDall)
     newLik <-  lpnew + survLik 
     

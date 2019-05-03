@@ -43,17 +43,21 @@ survSim<- survivalSimulation[[1]]
 #### now do a fit on the simulated data
 N<- nrow(survSim)
 
-now = Sys.time()
-initial.fit <- initializeFit(survivalMatrix = survSim, X = survivalSimulation$sim.X, iterations = 1000) # Recommend doing at least 5k iterations on real data, where the initialization of Beta is unknown
-Sys.time() - now
+# Below, wrapper functions provided for fitting the model. These functions are available in Functions/survivalLikelihood.R
+# It can be helpful to take the code out of the functions for debugging purposes.
 
+initial.fit <- initializeFit(survivalMatrix = survSim, X = survivalSimulation$sim.X, iterations = 10000) # Recommend doing at least 10k iterations on real data, where the initialization of Beta is unknown
+
+# Good practice to save out this initial (no chronic parameter). This initial fit is used to initialize values on the chronic-effect fit
 tmpFit<- list(Beta=initial.fit$Beta, Alpha=initial.fit$Alpha, covarianceBeta = initial.fit$covarianceBeta, likVector=initial.fit$likVector, ng = nrow(initial.fit$Beta))
 save(tmpFit, file=paste0('Sim_InitialFit.rdata'))
 
+# This wrapper function for fitting model with chronic parameters requires an initial fit formatted as above to run. 
+#Recommend >20-100k iterations on real data, as convergence can take a while. It can be helpful to do more than one run to assess convergence
 chronicFit<- chronicSurvivalFit(initialFit=tmpFit, 
                                 survivalMatrix=survSim, 
                                 X=simList$simX, 
-                                iterations=1000) #Recommend >20-100k iterations on real data, as convergence can take a while
+                                iterations=20000) 
 
 finalFit<- list(Beta=chronicFit$Beta, Alpha=chronicFit$Alpha, 
                 covarianceBeta=chronicFit$covb, covarianceAlpha=chronicFit$cova, # Proposition covariances
