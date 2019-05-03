@@ -592,7 +592,9 @@ initializeFit<- function(survivalMatrix, X, iterations=1000,
   return(list('Beta'=Beta, 'Alpha'=alpha, 'likVector'=likVector, 'covarianceBeta'=covb, 'ng'=ng))
 }
 
-chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, progressBar = T, X.chronic = c(2,3,4), X.acute=c(1,5,6), betasim=NULL, alphasim=NULL, Xnames=seq(1, dim(X)[1])){
+chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, progressBar = T, 
+                              X.chronic = c(2,3,4), X.acute=c(1,5,6), 
+                              beta_starting=NULL, alpha_starting=NULL, Xnames=seq(1, dim(X)[1])){
   run.chronic<- Xnames[X.chronic]
   ng= iterations
   updatecov = ng/100
@@ -620,7 +622,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   
   Beta = matrix(0, nrow=ng,ncol=dim(X)[1])
   Beta[1,1]<- -4
-  if(!is.null(betasim))Beta[1, ]<- betasim
+  if(!is.null(beta_starting))Beta[1, ]<- beta_starting
   colnames(Beta)<- Xnames
   p = ncol(Beta)
   mu0 = rep(0, p)
@@ -633,12 +635,13 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   covb =  diag(ncol(Beta))*1E-5
   
   alphastep = rep(.001,length(X.chronic))
-  alpha = matrix(0.01,nrow=ng,ncol=length(X.chronic))
+  alpha<- matrix(0.0001,nrow=ng,ncol=ncol(initialFit$Alpha))
   colnames(alpha)<- run.chronic
   cova<- diag(ncol(alpha)) * 0.0001
   dL.acc<- dL.acc2
   
-  if(!is.null(alphasim))alpha[1,]<- alphasim
+  if(!is.null(alpha_starting))alpha[1,]<- alpha_starting
+  
   aliveT<- function(X)return(length(X[X!=(-1)]))
   tRow = apply(survivalMatrix, 1, aliveT)
   likVector = rep(-Inf, ng)
@@ -651,11 +654,9 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   Beta[1,]<- BetaBurn
   colnames(Beta)<- colnames(initialFit$Beta)
   covb<- initialFit$covarianceBeta
-  alpha<- matrix(0.0001,nrow=ng,ncol=ncol(initialFit$Alpha))
   cova<- diag(ncol(alpha)) * 0.0001
   colnames(alpha)<- run.chronic
   updatecov = round(seq(ng/1000, ng, length.out=1000))
-  likVector<- rep(likVector.old[ng.old], ng)
   
   
   now = Sys.time()
@@ -666,7 +667,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   
   for(n in 1:(ng-1)){
     if(n %in% updatecov){
-      if(n > (ng/20)){
+      if(n > (ng/20) & n > 100){
         covb = as.matrix(updatePropAdaptive(cov(Beta[round(n/2):n,]), acceptRate = length(unique(Beta[round(n/2):n,1])) / n,adjust=(-0.7), n ,adaptiveAdjust=T))
       }    
     }
@@ -780,7 +781,7 @@ chronicSurvivalFit<- function(initialFit, survivalMatrix, X, iterations=1000, pr
   pd<- 1/2 * var(-2*likVector[round(n/2):n])
   DIC2<- pd + dBar
   
-  tmpFit<- list(Beta=Beta, Alpha=alpha, ng=ng, likVector=likVector, covb=covb, cova=cova, dic1=DIC, dic2=DIC2)
+  tmpFit<- list(Beta=Beta, Alpha=alpha, ng=ng, likVector=likVector, covarianceBeta=covb, covarianceAlpha=cova, ng=ng, dic1=DIC, dic2=DIC2)
   return(tmpFit)
 }
 

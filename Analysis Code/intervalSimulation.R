@@ -50,7 +50,7 @@ initial.fit <- initializeFit(survivalMatrix = survSim, X = survivalSimulation$si
 
 # Good practice to save out this initial (no chronic parameter). This initial fit is used to initialize values on the chronic-effect fit
 tmpFit<- list(Beta=initial.fit$Beta, Alpha=initial.fit$Alpha, covarianceBeta = initial.fit$covarianceBeta, likVector=initial.fit$likVector, ng = nrow(initial.fit$Beta))
-save(tmpFit, file=paste0('Sim_InitialFit.rdata'))
+save(tmpFit, file=paste0('Data/Sim_InitialFit.rdata'))
 
 # This wrapper function for fitting model with chronic parameters requires an initial fit formatted as above to run. 
 #Recommend >20-100k iterations on real data, as convergence can take a while. It can be helpful to do more than one run to assess convergence
@@ -60,10 +60,17 @@ chronicFit<- chronicSurvivalFit(initialFit=tmpFit,
                                 iterations=20000) 
 
 finalFit<- list(Beta=chronicFit$Beta, Alpha=chronicFit$Alpha, 
-                covarianceBeta=chronicFit$covb, covarianceAlpha=chronicFit$cova, # Proposition covariances
+                covarianceBeta=chronicFit$covarianceBeta, covarianceAlpha=chronicFit$covarianceAlpha, # Proposition covariances
                 BetaSim=BetaSim, AlphaSim=AlphaSim, X=simList$simX, # true values used in simulation
-                likVector=chronicFit$likVector, 
+                likVector=chronicFit$likVector, ng=chronicFit$ng,
                 survMat=survSim, survTrue=survTrue) # These two matrices have the interval censored and true daily survival simulation
 
 save(finalFit, file=paste0('Sim_FinalFit.rdata'))
 
+# To continue a chain and assure convergence, we can just use the previous chronicFit as the starting point
+continueFit<- chronicSurvivalFit(initialFit=finalFit, 
+                                survivalMatrix=survSim, 
+                                X=simList$simX, 
+                                iterations=20000, Xnames=colnames(chronicFit$Beta)) 
+
+save(continueFit, file=paste0('Sim_FinalFit_Continued.rdata'))
